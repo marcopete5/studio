@@ -7,11 +7,9 @@ const nextConfig: NextConfig = {
     eslint: {
         ignoreDuringBuilds: true
     },
-    output: 'export', // Enables static export
-    basePath: '/studio', // Matches your GitHub Pages repository path
-    assetPrefix: '/studio/', // Ensures assets are correctly prefixed
+    output: 'export',
     images: {
-        unoptimized: true, // Disables image optimization for static export
+        unoptimized: true,
         remotePatterns: [
             {
                 protocol: 'https',
@@ -24,3 +22,5 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+ls -a
+ls _next/static/
