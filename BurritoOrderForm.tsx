@@ -1,0 +1,1 @@
+3. `useEffect` runs with `watchedSelectedBurritos =
