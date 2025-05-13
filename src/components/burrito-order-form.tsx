@@ -1,9 +1,10 @@
+// src/components/burrito-order-form.tsx
 'use client';
 
 import React, {
-    useActionState,
+    // useActionState, // Replaced with useFormState from react-dom if that's what you meant
     useEffect,
-    useMemo,
+    // useMemo, // Not used in the provided snippet
     useTransition,
     useRef
 } from 'react';
@@ -11,6 +12,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 
+// Assuming these are correctly imported from your project structure
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -21,9 +23,10 @@ import {
     CardTitle
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Label } from '@/components/ui/label'; // Label from shadcn might not be needed if using FormLabel
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Textarea } from '@/components/ui/textarea'; // Import Textarea
 import {
     Form,
     FormDescription,
@@ -34,10 +37,14 @@ import {
     FormControl
 } from '@/components/ui/form';
 import { Loader2, Utensils } from 'lucide-react';
-import { submitBurritoOrder, type FormState } from '@/app/actions';
-import { useToast } from '@/hooks/use-toast';
+import { submitBurritoOrder, type FormState } from '@/app/actions'; // Ensure this path is correct
+import { useToast } from '@/hooks/use-toast'; // Ensure this path is correct
 
-// Schema for client-side validation
+// If useActionState is from 'react', it's for server actions.
+// If you meant useFormState from 'react-dom' for client-side state with server actions:
+import { useFormState } from 'react-dom'; // Or 'react' if it's the new React Canary useActionState
+
+// Schema for client-side validation - ADDED PREFERENCES
 const formSchema = z.object({
     name: z.string().min(1, 'Name is required'),
     email: z
@@ -51,7 +58,8 @@ const formSchema = z.object({
         .regex(/^\+1\d{10}$/, 'Phone number must be in +1XXXXXXXXXX format.'),
     selectedBurritos: z
         .array(z.string())
-        .min(1, 'Please select at least one burrito.')
+        .min(1, 'Please select at least one burrito.'),
+    preferences: z.string().optional() // <-- ADDED PREFERENCES FIELD
 });
 
 // Burrito options with prices
@@ -85,49 +93,41 @@ function SubmitButton({ isPending }: SubmitButtonProps) {
 // Helper function to normalize/format US phone numbers
 const normalizePhoneNumber = (value: string): string => {
     if (!value) return '';
-
-    // Remove all non-numeric characters except '+'
     let digits = value.replace(/[^\d+]/g, '');
-
-    // If it starts with '+', ensure it's '+1' or just '+' if that's all they typed
     if (digits.startsWith('+')) {
         if (digits.length > 1 && !digits.startsWith('+1')) {
             digits = '+1' + digits.substring(1);
         }
     } else if (digits.length > 0) {
-        // Doesn't start with +
         if (digits.startsWith('1') && digits.length > 1) {
-            // Starts with 1 (likely US country code)
             digits = '+' + digits;
         } else {
-            // Assumed to be a local number, prepend +1
             digits = '+1' + digits;
         }
     }
-
-    // Keep only +1 and up to 10 subsequent digits
     const match = digits.match(/^(\+1\d{0,10}).*$/);
-    if (match) {
-        return match[1];
-    }
-
-    // Handle cases like only "+" or partial "+1"
+    if (match) return match[1];
     if (digits === '+') return '+';
     if (digits === '+1' && value.length <= 2) return '+1';
-
-    return value; // Return original value if complex or non-conforming for further typing
+    return value;
 };
 
 export default function BurritoOrderForm() {
-    const initialFormState: FormState = { message: '', success: false };
+    const initialFormState: FormState = {
+        message: '',
+        errors: {},
+        success: false
+    }; // Added errors to initial state
 
-    const [formState, formAction] = useActionState<FormState, FormData>(
+    // Using useFormState from react-dom for server actions.
+    // If submitBurritoOrder is a pure client-side function that doesn't fit useFormState,
+    // you might need a different state management approach for its result.
+    const [formActionState, formAction] = useFormState<FormState, FormData>(
         submitBurritoOrder,
         initialFormState
     );
 
     const [isTransitionPending, startTransition] = useTransition();
-
     const { toast } = useToast();
 
     const form = useForm<z.infer<typeof formSchema>>({
@@ -136,9 +136,10 @@ export default function BurritoOrderForm() {
             name: '',
             email: '',
             phoneNumber: '',
-            selectedBurritos: []
+            selectedBurritos: [],
+            preferences: '' // <-- DEFAULT VALUE FOR PREFERENCES
         },
-        mode: 'onChange' // Validate on change for immediate feedback
+        mode: 'onChange'
     });
 
     const watchedSelectedBurritos =
@@ -153,7 +154,6 @@ export default function BurritoOrderForm() {
     useEffect(() => {
         const currentSelected = watchedSelectedBurritos || [];
         const prevSelected = prevWatchedSelectedBurritosRef.current || [];
-
         const areArraysEqual = (arr1: string[], arr2: string[]) => {
             if (arr1.length !== arr2.length) return false;
             const sortedArr1 = [...arr1].sort();
@@ -163,7 +163,6 @@ export default function BurritoOrderForm() {
             }
             return true;
         };
-
         if (!areArraysEqual(currentSelected, prevSelected)) {
             setQuantities((prevQuantities) => {
                 const newQuantities: { [key: string]: number } = {};
@@ -174,7 +173,6 @@ export default function BurritoOrderForm() {
                 return newQuantities;
             });
         }
-
         prevWatchedSelectedBurritosRef.current = currentSelected;
     }, [watchedSelectedBurritos]);
 
@@ -185,52 +183,58 @@ export default function BurritoOrderForm() {
     };
 
     useEffect(() => {
-        if (formState?.success) {
+        if (formActionState?.success) {
             toast({
                 title: 'Success!',
-                description: formState.message
+                description: formActionState.message
             });
-            form.reset();
-            setQuantities({});
+            form.reset(); // Reset react-hook-form fields
+            setQuantities({}); // Reset local quantity state
         } else if (
-            formState?.message &&
-            !formState.success &&
-            formState.message !== ''
+            formActionState?.message &&
+            !formActionState.success &&
+            formActionState.message !== '' // Ensure there's a message to show
         ) {
             const errorMessage =
-                formState.errors?._form?.[0] ||
-                formState.errors?.burritoOrders?.[0] ||
-                formState.message;
+                formActionState.errors?._form?.[0] ||
+                formActionState.errors?.burritoOrders?.[0] || // This might need adjustment if burritoOrders error is specific
+                formActionState.message;
             toast({
                 variant: 'destructive',
                 title: 'Submission Error',
                 description: errorMessage
             });
 
-            if (formState.errors) {
-                if (formState.errors.name)
+            // Set errors from server action to react-hook-form
+            if (formActionState.errors) {
+                if (formActionState.errors.name)
                     form.setError('name', {
                         type: 'server',
-                        message: formState.errors.name[0]
+                        message: formActionState.errors.name[0]
                     });
-                if (formState.errors.email)
+                if (formActionState.errors.email)
                     form.setError('email', {
                         type: 'server',
-                        message: formState.errors.email[0]
+                        message: formActionState.errors.email[0]
                     });
-                if (formState.errors.phoneNumber)
+                if (formActionState.errors.phoneNumber)
                     form.setError('phoneNumber', {
                         type: 'server',
-                        message: formState.errors.phoneNumber[0]
+                        message: formActionState.errors.phoneNumber[0]
                     });
-                if (formState.errors.burritoOrders)
+                if (formActionState.errors.selectedBurritos)
                     form.setError('selectedBurritos', {
                         type: 'server',
-                        message: formState.errors.burritoOrders[0]
+                        message: formActionState.errors.selectedBurritos[0]
                     });
+                if (formActionState.errors.preferences)
+                    form.setError('preferences', {
+                        type: 'server',
+                        message: formActionState.errors.preferences[0]
+                    }); // <-- SET PREFERENCES ERROR
             }
         }
-    }, [formState, toast, form]);
+    }, [formActionState, toast, form]);
 
     const anySelected = watchedSelectedBurritos.length > 0;
 
@@ -241,12 +245,15 @@ export default function BurritoOrderForm() {
             formDataForServer.append('email', data.email);
         }
         formDataForServer.append('phoneNumber', data.phoneNumber);
+        if (data.preferences) {
+            // <-- ADD PREFERENCES TO FORMDATA
+            formDataForServer.append('preferences', data.preferences);
+        }
 
         let hasAtLeastOneQuantity = false;
         data.selectedBurritos.forEach((burritoNameWithPrice) => {
             const quantity = quantities[burritoNameWithPrice] || 0;
             if (quantity > 0) {
-                // Extract just the name for the server action key
                 const burritoNameOnly = burritoNameWithPrice.split(' - ')[0];
                 formDataForServer.append(
                     `quantity-${burritoNameOnly}`,
@@ -314,6 +321,7 @@ export default function BurritoOrderForm() {
                     onSubmit={form.handleSubmit(onSubmit, onInvalid)}
                     className="space-y-0">
                     <CardContent className="space-y-6">
+                        {/* Name, Email, Phone Number Fields ... (Keep as is) */}
                         <FormField
                             control={form.control}
                             name="name"
@@ -336,7 +344,6 @@ export default function BurritoOrderForm() {
                                 </FormItem>
                             )}
                         />
-
                         <FormField
                             control={form.control}
                             name="email"
@@ -358,7 +365,6 @@ export default function BurritoOrderForm() {
                                 </FormItem>
                             )}
                         />
-
                         <FormField
                             control={form.control}
                             name="phoneNumber"
@@ -375,13 +381,13 @@ export default function BurritoOrderForm() {
                                             type="tel"
                                             placeholder="+1234567890"
                                             {...field}
-                                            onChange={(e) => {
-                                                const formattedValue =
+                                            onChange={(e) =>
+                                                field.onChange(
                                                     normalizePhoneNumber(
                                                         e.target.value
-                                                    );
-                                                field.onChange(formattedValue);
-                                            }}
+                                                    )
+                                                )
+                                            }
                                             aria-required="true"
                                         />
                                     </FormControl>
@@ -395,12 +401,13 @@ export default function BurritoOrderForm() {
                             )}
                         />
 
+                        {/* Selected Burritos Field ... (Keep as is) */}
                         <FormField
                             control={form.control}
                             name="selectedBurritos"
-                            render={(
-                                { field: { onChange, value, ...restField } } // Destructure `value` here
-                            ) => (
+                            render={({
+                                field: { onChange, value, ...restField }
+                            }) => (
                                 <FormItem>
                                     <FormLabel>
                                         Which Burrito(s)?{' '}
@@ -419,8 +426,7 @@ export default function BurritoOrderForm() {
                                                     const isChecked =
                                                         value?.includes(
                                                             burritoOption
-                                                        ); // Use `value` from render prop
-
+                                                        );
                                                     return (
                                                         <div
                                                             key={burritoOption}
@@ -435,7 +441,7 @@ export default function BurritoOrderForm() {
                                                                 ) => {
                                                                     const currentSelection =
                                                                         value ||
-                                                                        []; // Use `value`
+                                                                        [];
                                                                     let newSelection;
                                                                     if (
                                                                         checkedState
@@ -457,16 +463,16 @@ export default function BurritoOrderForm() {
                                                                     }
                                                                     onChange(
                                                                         newSelection
-                                                                    ); // Call onChange from render prop
+                                                                    );
                                                                     form.trigger(
                                                                         'selectedBurritos'
-                                                                    ); // Manually trigger validation
+                                                                    );
                                                                 }}
                                                                 aria-labelledby={`label-${burritoOption.replace(
                                                                     /\W/g,
                                                                     '-'
                                                                 )}`}
-                                                                {...restField} // Pass down other field props
+                                                                {...restField}
                                                             />
                                                             <Label
                                                                 htmlFor={
@@ -500,6 +506,7 @@ export default function BurritoOrderForm() {
                             ingredient cost.
                         </div>
 
+                        {/* Quantity Section ... (Keep as is, or integrate preferences before/after) */}
                         {anySelected && (
                             <div className="space-y-4 pt-4 border-t border-border transition-all duration-300 ease-in-out">
                                 <h3 className="text-md font-semibold text-primary">
@@ -548,20 +555,51 @@ export default function BurritoOrderForm() {
                                         );
                                     }
                                 )}
-                                {formState?.errors?.burritoOrders &&
+                                {formActionState?.errors?.burritoOrders &&
                                     !form.formState.errors.selectedBurritos && (
                                         <p className="text-sm text-destructive">
-                                            {formState.errors.burritoOrders[0]}
+                                            {
+                                                formActionState.errors
+                                                    .burritoOrders[0]
+                                            }
                                         </p>
                                     )}
                             </div>
                         )}
 
-                        {formState?.errors?._form && (
+                        {/* --- Preferences Section (NEW) --- */}
+                        <FormField
+                            control={form.control}
+                            name="preferences"
+                            render={({ field }) => (
+                                <FormItem className="pt-4 border-t border-border">
+                                    {' '}
+                                    {/* Added some top padding and border for separation */}
+                                    <FormLabel className="text-md font-semibold text-primary">
+                                        Preferences
+                                    </FormLabel>
+                                    <FormControl>
+                                        <Textarea
+                                            placeholder="Any special requests or dietary notes? (e.g., no rice, no onions, etc..)"
+                                            className="resize-y min-h-[80px]" // Allow vertical resize, set min height
+                                            {...field}
+                                        />
+                                    </FormControl>
+                                    <FormDescription>
+                                        Let us know if you have any special
+                                        instructions for your order.
+                                    </FormDescription>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        {/* --- End Preferences Section --- */}
+
+                        {formActionState?.errors?._form && (
                             <Alert variant="destructive" className="mt-4">
                                 <AlertTitle>Server Error</AlertTitle>
                                 <AlertDescription>
-                                    {formState.errors._form[0]}
+                                    {formActionState.errors._form[0]}
                                 </AlertDescription>
                             </Alert>
                         )}

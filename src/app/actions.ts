@@ -33,7 +33,8 @@ const burritoOrderSchema = z.object({
         )
         .refine((orders) => Object.keys(orders).length > 0, {
             message: 'Please select at least one burrito.'
-        })
+        }),
+    preferences: z.string().optional() // <-- ADDED PREFERENCES FIELD (optional)
 });
 
 // This type defines the shape of the state object returned by the action
@@ -44,6 +45,7 @@ export type FormState = {
         email?: string[];
         phoneNumber?: string[];
         burritoOrders?: string[]; // For errors on the burritoOrders object itself
+        preferences?: string[]; // <-- ADDED PREFERENCES ERRORS
         _form?: string[]; // For general form errors
     };
     success: boolean;
@@ -59,7 +61,8 @@ export async function submitBurritoOrder(
         name: formData.get('name'),
         email: formData.get('email'),
         phoneNumber: formData.get('phoneNumber'),
-        burritoOrders: {} // Initialize as an empty object
+        preferences: formData.get('preferences'), // <-- GET PREFERENCES
+        burritoOrders: {} // Initialize as an empty object,
     };
 
     // Extract burrito orders and quantities from formData
@@ -93,6 +96,7 @@ export async function submitBurritoOrder(
             email: fieldErrors.email,
             phoneNumber: fieldErrors.phoneNumber,
             burritoOrders: fieldErrors.burritoOrders,
+            preferences: fieldErrors.preferences, // <-- MAP PREFERENCES ERRORS
             _form:
                 validatedFields.error.formErrors.length > 0
                     ? validatedFields.error.formErrors
@@ -106,13 +110,15 @@ export async function submitBurritoOrder(
     }
 
     // If validation is successful, validatedFields.data contains the typed data
-    const { name, email, phoneNumber, burritoOrders } = validatedFields.data;
+    const { name, email, phoneNumber, burritoOrders, preferences } =
+        validatedFields.data;
 
     const submission = {
         name,
         email: email || undefined,
         phoneNumber,
-        burritoOrders
+        burritoOrders,
+        preferences: preferences || undefined // <-- ADD PREFERENCES TO SUBMISSION
     };
 
     try {

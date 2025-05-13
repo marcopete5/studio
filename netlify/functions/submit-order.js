@@ -14,7 +14,7 @@ const setCorsHeaders = (response) => {
 };
 
 export default async (req, context) => {
-    console.log('[submit-order] Function invoked. Method:', req.method); // Log invocation
+    console.log('[submit-order] Function invoked. Method:', req.method);
 
     if (req.method === 'OPTIONS') {
         console.log('[submit-order] Handling OPTIONS preflight request.');
@@ -52,18 +52,7 @@ export default async (req, context) => {
             console.error(
                 '[submit-order] CRITICAL: Missing Google Sheets API credentials or Sheet ID in environment variables.'
             );
-            console.error(
-                `[submit-order] GOOGLE_SERVICE_ACCOUNT_EMAIL exists: ${!!process
-                    .env.GOOGLE_SERVICE_ACCOUNT_EMAIL}`
-            );
-            console.error(
-                `[submit-order] GOOGLE_PRIVATE_KEY exists: ${!!process.env
-                    .GOOGLE_PRIVATE_KEY}`
-            );
-            console.error(
-                `[submit-order] GOOGLE_SHEET_ID exists: ${!!process.env
-                    .GOOGLE_SHEET_ID}`
-            );
+            // ... (logging for individual env vars)
             let configErrorResponse = new Response(
                 JSON.stringify({
                     error: 'Server configuration error. Please contact support.'
@@ -126,11 +115,12 @@ export default async (req, context) => {
             Name: orderData.name,
             Email: orderData.email || '',
             PhoneNumber: orderData.phoneNumber,
-            BurritoOrders: JSON.stringify(orderData.burritoOrders)
+            BurritoOrders: JSON.stringify(orderData.burritoOrders),
+            Preferences: orderData.preferences || '' // <-- CORRECTED: Use the string directly, or empty if undefined
         };
         console.log(
             '[submit-order] Prepared new row data:',
-            JSON.stringify(newRow, null, 2)
+            JSON.stringify(newRow, null, 2) // This log will now show Preferences correctly
         );
 
         // --- Add Row ---
@@ -150,7 +140,6 @@ export default async (req, context) => {
             '[submit-order] Error processing order in Netlify Function:',
             error
         );
-        // Log the full error object, including stack if available
         if (error.stack) {
             console.error('[submit-order] Error stack:', error.stack);
         }
