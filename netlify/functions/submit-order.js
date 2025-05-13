@@ -73,7 +73,7 @@ export default async (req, context) => {
             Timestamp: new Date().toISOString(),
             Name: orderData.name,
             Email: orderData.email || '', // Handle optional email
-            PhoneNumber: orderDatar.phoneNumber,
+            PhoneNumber: orderData.phoneNumber,
             // Convert burritoOrders object to a string for simplicity,
             // or you can map each burrito to its own column.
             BurritoOrders: JSON.stringify(orderData.burritoOrders)
