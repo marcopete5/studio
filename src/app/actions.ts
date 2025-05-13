@@ -1,128 +1,165 @@
-// netlify/functions/submit-order.js
+// src/app/actions.ts
+// This file is for client-side actions that run in the browser.
 
-// We'll use the 'google-spreadsheet' package to interact with Google Sheets.
-// Make sure to install it in your project: npm install google-spreadsheet google-auth-library
-import { GoogleSpreadsheet } from 'google-spreadsheet';
-import { JWT } from 'google-auth-library';
+'use client'; // Important for Next.js App Router if this is a Server Action
+// or if it's used by client components.
 
-// Helper function to set CORS headers
-// This allows your frontend (on GitHub Pages) to call this function
-const setCorsHeaders = (response) => {
-    response.headers.set(
-        'Access-Control-Allow-Origin',
-        process.env.ALLOWED_ORIGIN || '*'
-    ); // Be more specific in production for security
-    response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type');
-    return response;
+import { z } from 'zod';
+
+// Define available burritos (must match what the form generates)
+const burritoTypes = [
+    'Bean & Cheese Burrito',
+    'Beef & Bean Burrito',
+    'Burrito of the Week*'
+];
+
+// Define the schema for form validation using Zod
+// This should be the same schema as used in your form component
+const burritoOrderSchema = z.object({
+    name: z.string().min(1, 'Name is required'),
+    email: z
+        .string()
+        .email('Invalid email address')
+        .optional()
+        .or(z.literal('')), // Allows empty string or valid email
+    phoneNumber: z
+        .string()
+        .min(1, 'Phone number is required')
+        .regex(/^\+1\d{10}$/, 'Phone number must be in +1XXXXXXXXXX format.'),
+    burritoOrders: z
+        .record(
+            z.enum(burritoTypes as [string, ...string[]]),
+            z.number().min(1, 'Quantity must be at least 1')
+        )
+        .refine((orders) => Object.keys(orders).length > 0, {
+            message: 'Please select at least one burrito.'
+        })
+});
+
+// This type defines the shape of the state object returned by the action
+export type FormState = {
+    message: string;
+    errors?: {
+        name?: string[];
+        email?: string[];
+        phoneNumber?: string[];
+        burritoOrders?: string[]; // For errors on the burritoOrders object itself
+        _form?: string[]; // For general form errors
+    };
+    success: boolean;
 };
 
-export default async (req, context) => {
-    // Handle OPTIONS request for CORS preflight
-    if (req.method === 'OPTIONS') {
-        let optionsResponse = new Response(null, { status: 204 }); // No Content
-        setCorsHeaders(optionsResponse);
-        return optionsResponse;
+// This is the function that will be called by your form.
+// It runs on the client-side and calls your Netlify serverless function.
+export async function submitBurritoOrder(
+    prevState: FormState | undefined, // prevState is often used with useFormState hook
+    formData: FormData
+): Promise<FormState> {
+    const rawFormData: { [key: string]: unknown } = {
+        name: formData.get('name'),
+        email: formData.get('email'),
+        phoneNumber: formData.get('phoneNumber'),
+        burritoOrders: {} // Initialize as an empty object
+    };
+
+    // Extract burrito orders and quantities from formData
+    for (const burritoType of burritoTypes) {
+        const quantityKey = `quantity-${burritoType}`;
+        if (formData.has(quantityKey)) {
+            const quantityValue = formData.get(quantityKey);
+            if (
+                quantityValue &&
+                !isNaN(Number(quantityValue)) &&
+                Number(quantityValue) > 0
+            ) {
+                (rawFormData.burritoOrders as Record<string, number>)[
+                    burritoType
+                ] = Number(quantityValue);
+            }
+        }
     }
 
-    // Only allow POST requests for actual submissions
-    if (req.method !== 'POST') {
-        let methodNotAllowedResponse = new Response(
-            JSON.stringify({ error: 'Method Not Allowed' }),
-            { status: 405, headers: { 'Content-Type': 'application/json' } }
+    // Validate form data using Zod
+    const validatedFields = burritoOrderSchema.safeParse(rawFormData);
+
+    if (!validatedFields.success) {
+        console.error(
+            'Validation Errors (Frontend):',
+            validatedFields.error.flatten().fieldErrors
         );
-        setCorsHeaders(methodNotAllowedResponse);
-        return methodNotAllowedResponse;
+        const fieldErrors = validatedFields.error.flatten().fieldErrors;
+        const errors: FormState['errors'] = {
+            name: fieldErrors.name,
+            email: fieldErrors.email,
+            phoneNumber: fieldErrors.phoneNumber,
+            burritoOrders: fieldErrors.burritoOrders,
+            _form:
+                validatedFields.error.formErrors.length > 0
+                    ? validatedFields.error.formErrors
+                    : undefined
+        };
+        return {
+            message: 'Validation failed. Please check your entries.',
+            errors: errors,
+            success: false
+        };
     }
+
+    // If validation is successful, validatedFields.data contains the typed data
+    const { name, email, phoneNumber, burritoOrders } = validatedFields.data;
+
+    const submission = {
+        name,
+        email: email || undefined,
+        phoneNumber,
+        burritoOrders
+    };
 
     try {
-        const orderData = await req.json(); // Get data from the request body
+        // This is the URL of your deployed Netlify Function
+        const netlifyFunctionUrl =
+            'https://marcos-burritos.netlify.app/.netlify/functions/submit-order';
 
-        // --- Google Sheets Authentication and Setup ---
-        // Ensure these environment variables are set in your Netlify site settings
-        if (
-            !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ||
-            !process.env.GOOGLE_PRIVATE_KEY ||
-            !process.env.GOOGLE_SHEET_ID
-        ) {
-            console.error(
-                'Missing Google Sheets API credentials in environment variables.'
-            );
-            let configErrorResponse = new Response(
-                JSON.stringify({
-                    error: 'Server configuration error. Please contact support.'
-                }),
-                { status: 500, headers: { 'Content-Type': 'application/json' } }
-            );
-            setCorsHeaders(configErrorResponse);
-            return configErrorResponse;
-        }
-
-        const serviceAccountAuth = new JWT({
-            email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-            key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'), // Replace escaped newlines
-            scopes: ['https://www.googleapis.com/auth/spreadsheets']
+        const response = await fetch(netlifyFunctionUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(submission)
         });
 
-        const doc = new GoogleSpreadsheet(
-            process.env.GOOGLE_SHEET_ID,
-            serviceAccountAuth
-        );
-        await doc.loadInfo(); // Loads document properties and worksheets
-
-        // Assuming your sheet is the first one (index 0)
-        // You can also access sheets by title: await doc.sheetsByTitle['Your Sheet Name'];
-        const sheet = doc.sheetsByIndex[0];
-        if (!sheet) {
-            console.error(
-                'Google Sheet not found (index 0). GOOGLE_SHEET_ID might be incorrect or sheet was deleted.'
-            );
-            let sheetErrorResponse = new Response(
-                JSON.stringify({
-                    error: 'Spreadsheet configuration error on server (sheet not found).'
-                }),
-                { status: 500, headers: { 'Content-Type': 'application/json' } }
-            );
-            setCorsHeaders(sheetErrorResponse);
-            return sheetErrorResponse;
+        if (!response.ok) {
+            let errorResponseMessage = 'Failed to submit order via API.';
+            try {
+                const errorData = await response.json();
+                if (errorData && (errorData.error || errorData.message)) {
+                    errorResponseMessage = errorData.error || errorData.message;
+                } else {
+                    errorResponseMessage = `Server responded with ${response.status}: ${response.statusText}`;
+                }
+            } catch (e) {
+                // Could not parse JSON, use status text
+                errorResponseMessage = `Server responded with ${response.status}: ${response.statusText}`;
+            }
+            throw new Error(errorResponseMessage);
         }
 
-        // --- Prepare Data for Google Sheet ---
-        // Customize this based on your sheet's column order and header names
-        // Ensure your Google Sheet has headers that match these keys (e.g., "Timestamp", "Name", "Email", etc.)
-        const newRow = {
-            Timestamp: new Date().toISOString(),
-            Name: orderData.name,
-            Email: orderData.email || '', // Handle optional email
-            PhoneNumber: orderData.phoneNumber, // <--- CORRECTED TYPO HERE (was orderDatar)
-            // Convert burritoOrders object to a string for simplicity,
-            // or you can map each burrito to its own column if your sheet is structured that way.
-            BurritoOrders: JSON.stringify(orderData.burritoOrders)
-            // Example: If you have columns for each burrito type:
-            // 'Bean & Cheese Burrito': orderData.burritoOrders['Bean & Cheese Burrito'] || 0,
-            // 'Beef & Bean Burrito': orderData.burritoOrders['Beef & Bean Burrito'] || 0,
-            // 'Burrito of the Week*': orderData.burritoOrders['Burrito of the Week*'] || 0,
+        const result = await response.json(); // Expecting { message: "some success message" }
+
+        return {
+            message: result.message || 'Order submitted successfully!',
+            success: true
         };
-
-        // --- Add Row to Google Sheet ---
-        await sheet.addRow(newRow);
-
-        let successResponse = new Response(
-            JSON.stringify({ message: 'Order submitted successfully!' }), // Simplified success message
-            { status: 200, headers: { 'Content-Type': 'application/json' } }
-        );
-        setCorsHeaders(successResponse);
-        return successResponse;
     } catch (error) {
-        console.error('Error processing order:', error); // This logs the detailed error to Netlify Function logs
-        let errorResponse = new Response(
-            JSON.stringify({
-                error: 'Failed to process order.',
-                details: error.message
-            }), // Send a generic error + details to client
-            { status: 500, headers: { 'Content-Type': 'application/json' } }
-        );
-        setCorsHeaders(errorResponse);
-        return errorResponse;
+        console.error('Submission Error (Frontend):', error);
+        let errorMessage = 'An unexpected error occurred during submission.';
+        if (error instanceof Error) {
+            errorMessage = `Submission failed: ${error.message}`;
+        }
+        return {
+            message: errorMessage,
+            errors: { _form: [errorMessage] },
+            success: false
+        };
     }
-};
+}
