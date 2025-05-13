@@ -298,7 +298,9 @@ export default function BurritoOrderForm() {
                     Burrito Order Form
                 </CardTitle>
                 <CardDescription className="text-center text-muted-foreground mb-4">
-                    Tell us what you&apos;d like to order!
+                    I will stop accepting pre-orders on Thursday May 15 @ 7am.
+                    Orders will be ready for pickup on Friday. You will receive
+                    a text from me with specifics
                 </CardDescription>
                 <div className="text-center border-t border-border pt-4">
                     <p className="text-xs font-medium text-muted-foreground">
@@ -497,7 +499,10 @@ export default function BurritoOrderForm() {
 
                         <div className="text-sm text-muted-foreground mt-2">
                             *Burrito of the Week Price will vary weekly based on
-                            ingredient cost.
+                            ingredient cost. **To Reserve your Burritos, please
+                            venmo @marcopete5 the total amount. You can wait for
+                            the day I make them if you prefer but there will be
+                            no guarantee it won't sell out.
                         </div>
 
                         {anySelected && (
