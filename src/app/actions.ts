@@ -1,95 +1,20 @@
-'use client';
+// 'use client'; // Keep this if it's at the top of your file
 
-import { z } from 'zod';
-
-// Define available burritos (just names, prices are display only)
-const burritoTypes = [
-    'Bean & Cheese Burrito',
-    'Beef & Bean Burrito',
-    'Burrito of the Week*'
-];
-
-// Define the schema for form validation using Zod
-const burritoOrderSchema = z.object({
-    name: z.string().min(1, 'Name is required'),
-    email: z
-        .string()
-        .email('Invalid email address')
-        .optional()
-        .or(z.literal('')),
-    phoneNumber: z
-        .string()
-        .min(1, 'Phone number is required')
-        .regex(/^\+1\d{10}$/, 'Phone number must be in +1XXXXXXXXXX format.'),
-    burritoOrders: z
-        .record(
-            z.enum(burritoTypes as [string, ...string[]]),
-            z.number().min(1, 'Quantity must be at least 1')
-        )
-        .refine((orders) => Object.keys(orders).length > 0, {
-            message: 'Please select at least one burrito.'
-        })
-});
-
-export type FormState = {
-    message: string;
-    errors?: {
-        name?: string[];
-        email?: string[];
-        phoneNumber?: string[];
-        burritoOrders?: string[];
-        _form?: string[];
-    };
-    success: boolean;
-};
+// ... (all your existing Zod schemas, types, and initial formData processing logic remains the same) ...
 
 export async function submitBurritoOrder(
     prevState: FormState | undefined,
     formData: FormData
 ): Promise<FormState> {
-    const rawFormData: { [key: string]: unknown } = {
-        name: formData.get('name'),
-        email: formData.get('email'),
-        phoneNumber: formData.get('phoneNumber'),
-        burritoOrders: {}
-    };
-
-    // Extract burrito orders and quantities from formData
-    for (const burritoType of burritoTypes) {
-        const quantityKey = `quantity-${burritoType}`;
-        if (formData.has(quantityKey)) {
-            const quantity = formData.get(quantityKey);
-            if (quantity && Number(quantity) > 0) {
-                (rawFormData.burritoOrders as Record<string, number>)[
-                    burritoType
-                ] = Number(quantity);
-            }
-        }
-    }
-
-    // Validate form data
-    const validatedFields = burritoOrderSchema.safeParse(rawFormData);
+    // ... (your existing rawFormData extraction and validation logic remains the same) ...
+    // Ensure validatedFields check and return for errors is here
 
     if (!validatedFields.success) {
-        console.log(
-            'Validation Errors:',
-            validatedFields.error.flatten().fieldErrors
-        );
-        const fieldErrors = validatedFields.error.flatten().fieldErrors;
-        const errors: FormState['errors'] = {};
-        if (fieldErrors.name) errors.name = fieldErrors.name;
-        if (fieldErrors.email) errors.email = fieldErrors.email;
-        if (fieldErrors.phoneNumber)
-            errors.phoneNumber = fieldErrors.phoneNumber;
-        if (fieldErrors.burritoOrders)
-            errors.burritoOrders = fieldErrors.burritoOrders;
-        if (validatedFields.error.formErrors.length > 0) {
-            errors._form = validatedFields.error.formErrors;
-        }
-
+        // ... (your existing error handling for validation) ...
         return {
             message: 'Validation failed. Please check your entries.',
-            errors: errors,
+            errors: validatedFields.error.flatten()
+                .fieldErrors as FormState['errors'], // Be explicit with type if needed
             success: false
         };
     }
@@ -105,8 +30,13 @@ export async function submitBurritoOrder(
     };
 
     try {
-        // Send data to an external API endpoint
-        const response = await fetch('/api/submit-order', {
+        // Define the absolute URL of your deployed Netlify Function
+        const netlifyFunctionUrl =
+            'https://marcos-burritos.netlify.app/.netlify/functions/submit-order'; // <--- YOUR NETLIFY FUNCTION URL
+
+        // Send data to your Netlify Function
+        const response = await fetch(netlifyFunctionUrl, {
+            // <--- USE THE NEW URL HERE
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -115,11 +45,29 @@ export async function submitBurritoOrder(
         });
 
         if (!response.ok) {
-            throw new Error('Failed to submit order to API');
+            // Try to get more specific error message from the function's response if possible
+            let errorResponseMessage = 'Failed to submit order to API.';
+            try {
+                const errorData = await response.json();
+                if (errorData && errorData.error) {
+                    errorResponseMessage = errorData.error;
+                } else if (errorData && errorData.message) {
+                    errorResponseMessage = errorData.message;
+                } else {
+                    errorResponseMessage = `Server responded with ${response.status}: ${response.statusText}`;
+                }
+            } catch (e) {
+                // Could not parse JSON, use status text
+                errorResponseMessage = `Server responded with ${response.status}: ${response.statusText}`;
+            }
+            throw new Error(errorResponseMessage);
         }
 
+        // Assuming your Netlify function returns JSON with a message property on success
+        const result = await response.json();
+
         return {
-            message: 'Order submitted successfully!',
+            message: result.message || 'Order submitted successfully!',
             success: true
         };
     } catch (error) {
