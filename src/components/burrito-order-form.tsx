@@ -305,8 +305,7 @@ export default function BurritoOrderForm() {
                         Burrito of the Week
                     </p>
                     <h2 className="text-xl font-semibold text-primary tracking-tight mt-1">
-                        Mojo Lime Shredded Pork Burrito w/ Smoky Corn Salsa &
-                        Avocado Crema
+                        Steak & Charred Pineapple Teriyaki Burrito
                     </h2>
                 </div>
             </CardHeader>
