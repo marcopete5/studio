@@ -3,6 +3,12 @@ import type { NextConfig } from 'next';
 // Determine if the environment is production
 const isProd = process.env.NODE_ENV === 'production';
 
+// Check if this build is specifically for Netlify
+const isNetlify = process.env.NETLIFY === 'true';
+
+// Define your GitHub Pages repository name (the subpath)
+const ghPagesRepoName = 'studio';
+
 const nextConfig: NextConfig = {
     // Your existing TypeScript and ESLint configurations
     typescript: {
@@ -12,20 +18,20 @@ const nextConfig: NextConfig = {
         ignoreDuringBuilds: true
     },
 
-    // ---START: Added for GitHub Pages deployment to /studio/ ---
-    assetPrefix: isProd ? '/studio/' : undefined, // Prefixes assets (CSS, JS, images) with /studio/ in production
-    basePath: isProd ? '/studio' : undefined, // Sets the base path for routing to /studio in production
-    // ---END: Added for GitHub Pages deployment ---
+    // --- Conditionally set assetPrefix and basePath ---
+    // Apply only for production builds that are NOT for Netlify (i.e., for GitHub Pages)
+    assetPrefix: isProd && !isNetlify ? `/${ghPagesRepoName}/` : undefined,
+    basePath: isProd && !isNetlify ? `/${ghPagesRepoName}` : undefined,
+    // --- End conditional assetPrefix and basePath ---
 
-    // Your existing output and images configurations
-    output: 'export', // Essential for static site generation for gh-pages
+    output: 'export', // Essential for static site generation
     images: {
-        unoptimized: true, // Often helpful for gh-pages as Next.js image optimization requires a server
+        unoptimized: true,
         remotePatterns: [
             {
                 protocol: 'https',
                 hostname: 'picsum.photos',
-                port: '', // Default port, so empty string is fine
+                port: '',
                 pathname: '/**'
             }
         ]
