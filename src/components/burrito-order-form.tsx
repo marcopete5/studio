@@ -34,7 +34,7 @@ import { Loader2, Utensils } from 'lucide-react';
 import { submitBurritoOrder, type FormState } from '@/app/actions'; // Ensure this path is correct
 import { useToast } from '@/hooks/use-toast'; // Ensure this path is correct
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useFormState } from 'react-dom'; // Removed useFormStatus as it's not used directly
 
 // Schema for client-side validation
 const formSchema = z.object({
@@ -43,7 +43,7 @@ const formSchema = z.object({
         .string()
         .email('Invalid email address')
         .optional()
-        .or(z.literal('')),
+        .or(z.literal('')), // Allows empty string
     phoneNumber: z
         .string()
         .min(1, 'Phone number is required')
@@ -51,7 +51,7 @@ const formSchema = z.object({
     selectedBurritos: z
         .array(z.string())
         .min(1, 'Please select at least one burrito.'),
-    preferences: z.string().optional()
+    preferences: z.string().optional() // Allows undefined, but defaultValues will make it ''
 });
 
 // Burrito options with prices
@@ -119,12 +119,12 @@ export default function BurritoOrderForm() {
         resolver: zodResolver(formSchema),
         defaultValues: {
             name: '',
-            email: '',
+            email: '', // Correctly initialized to empty string
             phoneNumber: '',
             selectedBurritos: [],
-            preferences: ''
+            preferences: '' // Correctly initialized to empty string
         },
-        mode: 'onChange'
+        mode: 'onChange' // Or 'onBlur' or 'onSubmit' based on preference
     });
 
     const watchedSelectedBurritos =
@@ -152,18 +152,11 @@ export default function BurritoOrderForm() {
             setQuantities((prevQuantities) => {
                 const newQuantities: { [key: string]: number } = {};
                 currentSelected.forEach((burritoName) => {
-                    // If it's a newly selected burrito, default to 1. Otherwise, keep existing quantity or default to 1.
                     newQuantities[burritoName] =
                         prevQuantities[burritoName] !== undefined &&
                         prevQuantities[burritoName] > 0
                             ? prevQuantities[burritoName]
                             : 1;
-                });
-                // Remove quantities for deselected burritos
-                Object.keys(prevQuantities).forEach((burritoName) => {
-                    if (!currentSelected.includes(burritoName)) {
-                        // delete newQuantities[burritoName]; // Or keep it if you want to remember quantities
-                    }
                 });
                 return newQuantities;
             });
@@ -171,7 +164,6 @@ export default function BurritoOrderForm() {
         prevWatchedSelectedBurritosRef.current = currentSelected;
     }, [watchedSelectedBurritos]);
 
-    // Updated handleQuantityChange to accept string from input or number from buttons
     const handleQuantityChange = (
         burritoName: string,
         value: string | number
@@ -179,16 +171,13 @@ export default function BurritoOrderForm() {
         let numValue: number;
         if (typeof value === 'string') {
             if (value.trim() === '') {
-                // If user clears the input
-                numValue = 1; // Default back to 1 if input is cleared
+                numValue = 1;
             } else {
                 numValue = parseInt(value, 10);
             }
         } else {
-            numValue = value; // Value from + / - buttons
+            numValue = value;
         }
-
-        // Ensure quantity is at least 1, or set to 1 if NaN or less than 1
         const newQuantity = isNaN(numValue) || numValue < 1 ? 1 : numValue;
         setQuantities((prev) => ({ ...prev, [burritoName]: newQuantity }));
     };
@@ -196,75 +185,79 @@ export default function BurritoOrderForm() {
     useEffect(() => {
         if (formActionState?.success) {
             toast({ title: 'Success!', description: formActionState.message });
-            form.reset();
-            setQuantities({});
+            form.reset(); // Resets to defaultValues
+            setQuantities({}); // Clear quantities
         } else if (
             formActionState?.message &&
             !formActionState.success &&
-            formActionState.message !== ''
+            formActionState.message !== '' // Ensure there's an actual message
         ) {
             const errorMessage =
                 formActionState.errors?._form?.[0] ||
-                formActionState.errors?.burritoOrders?.[0] ||
+                formActionState.errors?.burritoOrders?.[0] || // Check for specific quantity/order errors
                 formActionState.message;
             toast({
                 variant: 'destructive',
                 title: 'Submission Error',
                 description: errorMessage
             });
+            // Set form errors from server action state
             if (formActionState.errors) {
-                if (formActionState.errors.name)
-                    form.setError('name', {
-                        type: 'server',
-                        message: formActionState.errors.name[0]
-                    });
-                if (formActionState.errors.email)
-                    form.setError('email', {
-                        type: 'server',
-                        message: formActionState.errors.email[0]
-                    });
-                if (formActionState.errors.phoneNumber)
-                    form.setError('phoneNumber', {
-                        type: 'server',
-                        message: formActionState.errors.phoneNumber[0]
-                    });
-                if (formActionState.errors.selectedBurritos)
-                    form.setError('selectedBurritos', {
-                        type: 'server',
-                        message: formActionState.errors.selectedBurritos[0]
-                    });
-                if (formActionState.errors.preferences)
-                    form.setError('preferences', {
-                        type: 'server',
-                        message: formActionState.errors.preferences[0]
-                    });
+                Object.keys(formActionState.errors).forEach((key) => {
+                    const fieldKey = key as keyof z.infer<typeof formSchema>;
+                    const errorMessages = formActionState.errors![fieldKey];
+                    if (errorMessages && errorMessages.length > 0) {
+                        form.setError(fieldKey, {
+                            type: 'server',
+                            message: errorMessages[0]
+                        });
+                    }
+                });
             }
         }
     }, [formActionState, toast, form]);
 
     const anySelected = watchedSelectedBurritos.length > 0;
 
+    // This function is called when react-hook-form validation passes
     const onSubmit = (data: z.infer<typeof formSchema>) => {
         const formDataForServer = new FormData();
+
+        // Append name
         formDataForServer.append('name', data.name);
-        if (data.email) formDataForServer.append('email', data.email);
+
+        // Append email - data.email will be a string (empty or valid email)
+        // due to defaultValues and Zod schema (.optional().or(z.literal('')))
+        formDataForServer.append('email', data.email);
+
+        // Append phone number
         formDataForServer.append('phoneNumber', data.phoneNumber);
-        if (data.preferences)
-            formDataForServer.append('preferences', data.preferences);
+
+        // Append preferences - data.preferences will be a string (empty or with content)
+        // due to defaultValues and Zod schema (.optional())
+        formDataForServer.append('preferences', data.preferences);
 
         let hasAtLeastOneQuantity = false;
-        data.selectedBurritos.forEach((burritoNameWithPrice) => {
-            // Use the quantity from the state, ensuring it's at least 1
-            const quantity = Math.max(1, quantities[burritoNameWithPrice] || 1);
-            formDataForServer.append(
-                `quantity-${burritoNameWithPrice.split(' - ')[0]}`,
-                String(quantity)
-            );
-            hasAtLeastOneQuantity = true; // If any burrito is selected, we assume a quantity of at least 1
-        });
+        // Ensure selectedBurritos is an array before calling forEach
+        if (Array.isArray(data.selectedBurritos)) {
+            data.selectedBurritos.forEach((burritoNameWithPrice) => {
+                const quantity = Math.max(
+                    1,
+                    quantities[burritoNameWithPrice] || 1
+                );
+                formDataForServer.append(
+                    `quantity-${burritoNameWithPrice.split(' - ')[0]}`, // Make sure key matches server expectation
+                    String(quantity)
+                );
+                hasAtLeastOneQuantity = true;
+            });
+        }
 
-        if (!hasAtLeastOneQuantity && data.selectedBurritos.length > 0) {
-            // This case should ideally not be hit if quantities default to 1 upon selection
+        if (
+            !hasAtLeastOneQuantity &&
+            data.selectedBurritos &&
+            data.selectedBurritos.length > 0
+        ) {
             form.setError('selectedBurritos', {
                 type: 'manual',
                 message:
@@ -284,7 +277,9 @@ export default function BurritoOrderForm() {
         });
     };
 
+    // This function is called when react-hook-form validation fails
     const onInvalid = (errors: any) => {
+        console.error('Client-side validation errors:', errors); // Log client-side errors
         const firstErrorKey = Object.keys(errors)[0];
         if (firstErrorKey && errors[firstErrorKey].message) {
             toast({
@@ -308,7 +303,8 @@ export default function BurritoOrderForm() {
                     Burrito Order Form
                 </CardTitle>
                 <CardDescription className="text-center text-muted-foreground mb-4">
-                    Pre-orders end Thursday May 15 @ 7am.
+                    Pre-orders end Thursday May 15 @ 7am.{' '}
+                    {/* Note: Current date is May 14, 2025. This date might need an update. */}
                 </CardDescription>
                 <div className="text-center border-t border-border pt-4">
                     <p className="text-xs font-medium text-muted-foreground">
@@ -321,10 +317,10 @@ export default function BurritoOrderForm() {
             </CardHeader>
             <Form {...form}>
                 <form
-                    onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+                    onSubmit={form.handleSubmit(onSubmit, onInvalid)} // Pass onInvalid here
                     className="space-y-0">
                     <CardContent className="space-y-6">
-                        {/* Name, Email, Phone Number Fields */}
+                        {/* Name Field */}
                         <FormField
                             control={form.control}
                             name="name"
@@ -347,6 +343,7 @@ export default function BurritoOrderForm() {
                                 </FormItem>
                             )}
                         />
+                        {/* Email Field */}
                         <FormField
                             control={form.control}
                             name="email"
@@ -357,7 +354,7 @@ export default function BurritoOrderForm() {
                                         <Input
                                             type="email"
                                             placeholder="your.email@example.com"
-                                            {...field}
+                                            {...field} // field.value will be '' if empty due to defaultValues
                                         />
                                     </FormControl>
                                     <FormDescription>
@@ -368,6 +365,7 @@ export default function BurritoOrderForm() {
                                 </FormItem>
                             )}
                         />
+                        {/* Phone Number Field */}
                         <FormField
                             control={form.control}
                             name="phoneNumber"
@@ -408,15 +406,13 @@ export default function BurritoOrderForm() {
                         <FormField
                             control={form.control}
                             name="selectedBurritos"
-                            render={(
-                                {
-                                    field: {
-                                        onChange,
-                                        value: selectedBurritosValue,
-                                        ...restField
-                                    }
-                                } // Renamed value for clarity
-                            ) => (
+                            render={({
+                                field: {
+                                    onChange,
+                                    value: selectedBurritosValue, // Current value from RHF
+                                    ...restField
+                                }
+                            }) => (
                                 <FormItem>
                                     <FormLabel>
                                         Which Burrito(s)?{' '}
@@ -472,16 +468,16 @@ export default function BurritoOrderForm() {
                                                                     }
                                                                     onChange(
                                                                         newSelection
-                                                                    ); // This updates react-hook-form's state
+                                                                    );
                                                                     form.trigger(
                                                                         'selectedBurritos'
-                                                                    );
+                                                                    ); // Trigger validation after change
                                                                 }}
                                                                 aria-labelledby={`label-${burritoOption.replace(
                                                                     /\W/g,
                                                                     '-'
                                                                 )}`}
-                                                                {...restField}
+                                                                {...restField} // Spread rest of field props (name, onBlur, ref)
                                                             />
                                                             <Label
                                                                 htmlFor={
@@ -523,7 +519,6 @@ export default function BurritoOrderForm() {
                                 </h3>
                                 {watchedSelectedBurritos.map(
                                     (burritoNameWithPrice) => {
-                                        // Use the quantity from state, default to 1 if not set (should be set by useEffect)
                                         const currentQuantity =
                                             quantities[burritoNameWithPrice] ||
                                             1;
@@ -554,7 +549,7 @@ export default function BurritoOrderForm() {
                                                         }
                                                         disabled={
                                                             currentQuantity <= 1
-                                                        } // Disable if quantity is 1
+                                                        }
                                                         aria-label={`Decrease quantity for ${burritoNameWithPrice}`}>
                                                         -
                                                     </Button>
@@ -564,16 +559,16 @@ export default function BurritoOrderForm() {
                                                             '-'
                                                         )}`}
                                                         type="number"
-                                                        inputMode="numeric" // Helps bring up numeric keypad on mobile
+                                                        inputMode="numeric"
                                                         min="1"
-                                                        value={currentQuantity} // Controlled by state
+                                                        value={currentQuantity}
                                                         onChange={(e) =>
                                                             handleQuantityChange(
                                                                 burritoNameWithPrice,
                                                                 e.target.value
                                                             )
                                                         }
-                                                        className="w-16 text-center mx-2 h-8" // Adjusted width and height
+                                                        className="w-16 text-center mx-2 h-8"
                                                         aria-label={`Quantity for ${
                                                             burritoNameWithPrice.split(
                                                                 ' - '
@@ -617,7 +612,9 @@ export default function BurritoOrderForm() {
                         <FormField
                             control={form.control}
                             name="preferences"
-                            render={({ field }) => (
+                            render={(
+                                { field } // field.value will be '' if empty
+                            ) => (
                                 <FormItem className="pt-4 border-t border-border">
                                     <FormLabel className="text-md font-semibold text-primary">
                                         Preferences
@@ -626,7 +623,7 @@ export default function BurritoOrderForm() {
                                         <Textarea
                                             placeholder="Any special requests or dietary notes? (e.g., extra salsa, no onions, gluten-free tortilla if available)"
                                             className="resize-y min-h-[80px]"
-                                            {...field}
+                                            {...field} // field.value is passed here. If '', Textarea gets ''
                                         />
                                     </FormControl>
                                     <FormDescription>
@@ -638,7 +635,7 @@ export default function BurritoOrderForm() {
                             )}
                         />
 
-                        {formActionState?.errors?._form && (
+                        {formActionState?.errors?._form && ( // For general server errors not tied to a specific field
                             <Alert variant="destructive" className="mt-4">
                                 <AlertTitle>Server Error</AlertTitle>
                                 <AlertDescription>
