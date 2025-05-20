@@ -1,6 +1,20 @@
-[functions]
-  directory = "netlify/functions"
-
 [build]
-  command = "npm run build" # Or your actual build command
-  publish = "out"           # Your Next.js export directory
+  command = "npm run build"
+  publish = "out" # Or your actual Next.js export directory if different
+  functions = "netlify/functions" # Specifies where your Netlify functions live
+
+[build.environment]
+  # Set a specific LTS Node.js version. Node 20 aligns with your @types/node.
+  # Node 18 is also a very stable choice if 20 still presents issues.
+  NODE_VERSION = "20"
+
+[functions]
+  # This section is for settings specific to your serverless functions.
+  # 'directory' was already here, but ensure it's under [functions] if you move other settings around.
+  directory = "netlify/functions"
+  node_bundler = "esbuild" # Use the esbuild bundler
+
+  # This is often the key fix:
+  # Tells esbuild not to bundle these modules, but to expect them to be
+  # available from node_modules in the Lambda runtime.
+  external_node_modules = ["google-spreadsheet", "google-auth-library"]
