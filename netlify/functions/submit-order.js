@@ -1,16 +1,11 @@
 // netlify/functions/submit-order.js
-
-// CRITICAL: Ensure 'google-spreadsheet' and 'google-auth-library' are in your root package.json
-// and that they are correctly installed during Netlify's build process.
-// If these imports fail or the libraries are not bundled correctly, 'GoogleSpreadsheet' or 'JWT'
-// might be undefined, leading to "TypeError: ... is not a function" when using `new`.
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
 
 const setCorsHeaders = (response) => {
     response.headers.set(
         'Access-Control-Allow-Origin',
-        process.env.ALLOWED_ORIGIN || '*' // Consider making this more specific than '*' for production
+        process.env.ALLOWED_ORIGIN || '*'
     );
     response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
     response.headers.set('Access-Control-Allow-Headers', 'Content-Type');
@@ -18,27 +13,20 @@ const setCorsHeaders = (response) => {
 };
 
 export default async (req, context) => {
-    // It's helpful to log the very start of the function to see if it's even reached
-    // before a potential import-related TypeError.
     console.log(
         '[submit-order] Netlify Function handler started. Method:',
         req.method
     );
 
-    // Check if `JWT` and `GoogleSpreadsheet` are defined.
-    // This is a manual check you can add for debugging the TypeError.
-    // In production, you'd rely on catching errors from `new JWT` or `new GoogleSpreadsheet`.
     if (typeof JWT !== 'function') {
         console.error(
             '[submit-order] CRITICAL FAILURE: JWT is not a function. Check google-auth-library import and installation.'
         );
-        // Fall through to the main try/catch which will handle this if JWT() is called.
     }
     if (typeof GoogleSpreadsheet !== 'function') {
         console.error(
             '[submit-order] CRITICAL FAILURE: GoogleSpreadsheet is not a function. Check google-spreadsheet import and installation.'
         );
-        // Fall through.
     }
 
     if (req.method === 'OPTIONS') {
@@ -67,8 +55,6 @@ export default async (req, context) => {
             JSON.stringify(orderData, null, 2)
         );
 
-        // --- Environment Variable Check ---
-        console.log('[submit-order] Checking environment variables...');
         const requiredEnvVars = [
             'GOOGLE_SERVICE_ACCOUNT_EMAIL',
             'GOOGLE_PRIVATE_KEY',
@@ -95,17 +81,13 @@ export default async (req, context) => {
         }
         console.log('[submit-order] Environment variables seem present.');
 
-        // --- Google Sheets Authentication ---
-        console.log('[submit-order] Authenticating with Google Sheets...');
-        // CRITICAL POINT: If JWT is undefined, `new JWT()` will throw "TypeError: JWT is not a constructor" (or minified "v is not a function").
         const serviceAccountAuth = new JWT({
             email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-            key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'), // Correctly handles escaped newlines
+            key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
             scopes: ['https://www.googleapis.com/auth/spreadsheets']
         });
         console.log('[submit-order] JWT auth object created.');
 
-        // CRITICAL POINT: If GoogleSpreadsheet is undefined, this will also throw a TypeError.
         const doc = new GoogleSpreadsheet(
             process.env.GOOGLE_SHEET_ID,
             serviceAccountAuth
@@ -114,13 +96,13 @@ export default async (req, context) => {
             `[submit-order] GoogleSpreadsheet object created for sheet ID: ${process.env.GOOGLE_SHEET_ID}`
         );
 
-        await doc.loadInfo(); // Authenticates and loads properties
+        await doc.loadInfo();
         console.log(
             '[submit-order] Google Sheet info loaded. Title:',
             doc.title
         );
 
-        const sheet = doc.sheetsByIndex[0]; // Assuming the first sheet
+        const sheet = doc.sheetsByIndex[0];
         if (!sheet) {
             const availableSheetTitles =
                 Object.values(doc.sheetsByTitle)
@@ -145,21 +127,20 @@ export default async (req, context) => {
             sheet.rowCount
         );
 
-        // --- Prepare Data ---
+        // --- Prepare Data (including Preferences) ---
         const newRow = {
             Timestamp: new Date().toISOString(),
             Name: orderData.name,
-            Email: orderData.email || '', // Defaults to empty string if email is undefined/null
+            Email: orderData.email || '',
             PhoneNumber: orderData.phoneNumber,
-            BurritoOrders: JSON.stringify(orderData.burritoOrders), // Storing as JSON string
-            Preferences: orderData.preferences || '' // Defaults to empty string if preferences is undefined/null
+            BurritoOrders: JSON.stringify(orderData.burritoOrders),
+            Preferences: orderData.preferences || '' // Added Preferences field
         };
         console.log(
             '[submit-order] Prepared new row data:',
             JSON.stringify(newRow, null, 2)
         );
 
-        // --- Add Row ---
         console.log('[submit-order] Attempting to add row to sheet...');
         await sheet.addRow(newRow);
         console.log('[submit-order] Row successfully added to sheet.');
@@ -174,18 +155,16 @@ export default async (req, context) => {
     } catch (error) {
         console.error(
             '[submit-order] Error processing order in Netlify Function:',
-            error.message // Log the message
+            error.message
         );
         if (error.stack) {
-            console.error('[submit-order] Error stack:', error.stack); // Log the stack for more details
+            console.error('[submit-order] Error stack:', error.stack);
         }
-        // Optionally log the error object itself if it might contain more info
-        // console.error('[submit-order] Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
 
         let errorResponse = new Response(
             JSON.stringify({
                 error: 'Failed to process order due to a server issue.',
-                details: error.message // Provide the error message to the client for debugging
+                details: error.message
             }),
             { status: 500, headers: { 'Content-Type': 'application/json' } }
         );

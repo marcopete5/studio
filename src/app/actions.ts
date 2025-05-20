@@ -1,27 +1,22 @@
 // src/app/actions.ts
-// This file is for client-side actions that run in the browser.
-
-'use client'; // Important for Next.js App Router if this is a Server Action
-// or if it's used by client components.
+'use client';
 
 import { z } from 'zod';
 
-// Define available burritos (must match what the form generates)
 const burritoTypes = [
     'Bean & Cheese Burrito',
     'Beef & Bean Burrito',
     'Burrito of the Week*'
 ];
 
-// Define the schema for form validation using Zod
-// This should be the same schema as used in your form component
+// Updated schema for form validation
 const burritoOrderSchema = z.object({
     name: z.string().min(1, 'Name is required'),
     email: z
         .string()
         .email('Invalid email address')
         .optional()
-        .or(z.literal('')), // Allows empty string or valid email
+        .or(z.literal('')),
     phoneNumber: z
         .string()
         .min(1, 'Phone number is required')
@@ -34,38 +29,34 @@ const burritoOrderSchema = z.object({
         .refine((orders) => Object.keys(orders).length > 0, {
             message: 'Please select at least one burrito.'
         }),
-    preferences: z.string().optional() // <-- ADDED PREFERENCES FIELD (optional)
+    preferences: z.string().optional() // Added preferences field
 });
 
-// This type defines the shape of the state object returned by the action
 export type FormState = {
     message: string;
     errors?: {
         name?: string[];
         email?: string[];
         phoneNumber?: string[];
-        burritoOrders?: string[]; // For errors on the burritoOrders object itself
-        preferences?: string[]; // <-- ADDED PREFERENCES ERRORS
-        _form?: string[]; // For general form errors
+        burritoOrders?: string[];
+        preferences?: string[]; // Added for preferences errors
+        _form?: string[];
     };
     success: boolean;
 };
 
-// This is the function that will be called by your form.
-// It runs on the client-side and calls your Netlify serverless function.
 export async function submitBurritoOrder(
-    prevState: FormState | undefined, // prevState is often used with useFormState hook
+    prevState: FormState | undefined,
     formData: FormData
 ): Promise<FormState> {
     const rawFormData: { [key: string]: unknown } = {
         name: formData.get('name'),
         email: formData.get('email'),
         phoneNumber: formData.get('phoneNumber'),
-        preferences: formData.get('preferences'), // <-- GET PREFERENCES
-        burritoOrders: {} // Initialize as an empty object,
+        preferences: formData.get('preferences') || '', // Get preferences, default to empty string if not present
+        burritoOrders: {}
     };
 
-    // Extract burrito orders and quantities from formData
     for (const burritoType of burritoTypes) {
         const quantityKey = `quantity-${burritoType}`;
         if (formData.has(quantityKey)) {
@@ -82,7 +73,6 @@ export async function submitBurritoOrder(
         }
     }
 
-    // Validate form data using Zod
     const validatedFields = burritoOrderSchema.safeParse(rawFormData);
 
     if (!validatedFields.success) {
@@ -96,7 +86,7 @@ export async function submitBurritoOrder(
             email: fieldErrors.email,
             phoneNumber: fieldErrors.phoneNumber,
             burritoOrders: fieldErrors.burritoOrders,
-            preferences: fieldErrors.preferences, // <-- MAP PREFERENCES ERRORS
+            preferences: fieldErrors.preferences, // Include preferences errors
             _form:
                 validatedFields.error.formErrors.length > 0
                     ? validatedFields.error.formErrors
@@ -109,20 +99,18 @@ export async function submitBurritoOrder(
         };
     }
 
-    // If validation is successful, validatedFields.data contains the typed data
     const { name, email, phoneNumber, burritoOrders, preferences } =
-        validatedFields.data;
+        validatedFields.data; // Destructure preferences
 
     const submission = {
         name,
-        email: email || undefined,
+        email: email || undefined, // Send undefined if empty, so JSON.stringify might omit it
         phoneNumber,
         burritoOrders,
-        preferences: preferences || undefined // <-- ADD PREFERENCES TO SUBMISSION
+        preferences: preferences || undefined // Send undefined if empty
     };
 
     try {
-        // This is the URL of your deployed Netlify Function
         const netlifyFunctionUrl =
             'https://marcos-burritos.netlify.app/.netlify/functions/submit-order';
 
@@ -144,13 +132,12 @@ export async function submitBurritoOrder(
                     errorResponseMessage = `Server responded with ${response.status}: ${response.statusText}`;
                 }
             } catch (e) {
-                // Could not parse JSON, use status text
                 errorResponseMessage = `Server responded with ${response.status}: ${response.statusText}`;
             }
             throw new Error(errorResponseMessage);
         }
 
-        const result = await response.json(); // Expecting { message: "some success message" }
+        const result = await response.json();
 
         return {
             message: result.message || 'Order submitted successfully!',
